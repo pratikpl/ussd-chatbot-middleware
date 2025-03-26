@@ -100,6 +100,8 @@ async function handleResponse(req, res) {
   });
   
   try {
+
+    
     // Get session
     const session = await sessionService.getSession(sessionId);
     
@@ -125,10 +127,20 @@ async function handleResponse(req, res) {
     const response = await pollForResponse(sessionId);
     
     if (response) {
-      logger.info(`Responding to USSD response with chatbot response: ${sessionId}`);
+      // Check if the chatbot response contains [END] to terminate the session
+      const shouldClose = response.includes('[END]');
+      
+      // If response contains [END], remove it from the message
+      let cleanResponse = response;
+      if (shouldClose) {
+        cleanResponse = response.replace('[END]', '').trim();
+        logger.info(`Chatbot requested to end session with [END] keyword: ${sessionId}`);
+      }
+      
+      logger.info(`Responding to USSD response with chatbot response: ${sessionId}, shouldClose: ${shouldClose}`);
       return res.json({
-        shouldClose: false,
-        ussdMenu: response,
+        shouldClose: shouldClose,
+        ussdMenu: cleanResponse,
         responseExitCode: 200,
         responseMessage: ""
       });
@@ -167,6 +179,7 @@ async function handleResponse(req, res) {
     });
   }
 }
+
 
 /**
  * Handle the USSD end request
