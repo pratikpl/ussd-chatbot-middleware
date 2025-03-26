@@ -2,6 +2,7 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const config = require('../utils/config');
 const logger = require('../utils/logger');
+const sessionService = require('../services');
 
 // Store a mapping of phone numbers to UUIDs for consistency
 const phoneToUuidMap = new Map();

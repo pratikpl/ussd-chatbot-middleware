@@ -3,6 +3,7 @@ const numCPUs = require('os').cpus().length;
 const app = require('./app');
 const config = require('./utils/config');
 const logger = require('./utils/logger');
+const validateEnv = require('./utils/validateEnv');
 
 // Get server port and workers
 const PORT = config.get('server.port') || 3000;
@@ -15,6 +16,9 @@ const WORKERS = Math.min(
  * Start the server
  */
 async function startServer() {
+  // Validate critical environment variables
+  validateEnv.validateAndLog(true); // Exit on failure
+  
   // Log important configuration at startup
   const config = require('./utils/config');
   
@@ -41,10 +45,31 @@ async function startServer() {
   
   // Verify session service is initialized
   try {
-    // Simply importing the service will check if Redis is available
-    // because we've added the validation in the session.js file
-    require('./services');
-    logger.info('Session service initialized successfully');
+    // Import the session service
+    const sessionService = require('./services');
+    
+    // Explicitly check that required functions exist
+    const requiredMethods = [
+      'createSession', 
+      'getSession', 
+      'updateSession', 
+      'endSession', 
+      'storeChatbotResponse', 
+      'getChatbotResponse'
+    ];
+    
+    const availableMethods = Object.keys(sessionService);
+    logger.info(`Session service has the following methods: ${availableMethods.join(', ')}`);
+    
+    const missingMethods = requiredMethods.filter(method => 
+      typeof sessionService[method] !== 'function'
+    );
+    
+    if (missingMethods.length > 0) {
+      throw new Error(`Session service is missing required methods: ${missingMethods.join(', ')}`);
+    }
+    
+    logger.info('Session service initialized successfully with all required methods');
   } catch (error) {
     logger.error(`Failed to initialize session service: ${error.message}`);
     logger.error('Cannot start server without session service');
@@ -83,7 +108,7 @@ function setupWorkerProcessHandlers() {
 /**
  * Main function to start the server with clustering
  */
-function main() {
+async function main() {
   // If clustering is enabled and this is the master process
   if (WORKERS > 1 && cluster.isMaster) {
     logger.info(`Master ${process.pid} is running`);
@@ -100,10 +125,19 @@ function main() {
     });
   } else {
     // This is a worker process or clustering is disabled
-    startServer();
-    setupWorkerProcessHandlers();
+    try {
+      await startServer();
+      setupWorkerProcessHandlers();
+    } catch (error) {
+      logger.error(`Failed to start server: ${error.message}`);
+      process.exit(1);
+    }
   }
 }
 
 // Start the server
-main();
+main().catch(error => {
+  logger.error(`Fatal error during server startup: ${error.message}`);
+  console.error(`Fatal error: ${error.message}`);
+  process.exit(1);
+});

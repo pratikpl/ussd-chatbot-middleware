@@ -50,14 +50,32 @@ const expireAsync = promisify(client.expire).bind(client);
 // Session TTL in seconds (e.g., 10 minutes)
 const SESSION_TTL = 600;
 
-// Log Redis errors
+// Log Redis events
 client.on('error', (err) => {
   logger.error(`Redis Error: ${err.message}`, { error: err.toString() });
 });
 
-// Log successful Redis connection
 client.on('connect', () => {
   logger.info('Connected to Redis server');
+});
+
+client.on('end', () => {
+  logger.info('Redis connection closed');
+});
+
+// Register graceful shutdown handler
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, closing Redis connection...');
+  client.quit(() => {
+    logger.info('Redis connection closed gracefully');
+  });
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT received, closing Redis connection...');
+  client.quit(() => {
+    logger.info('Redis connection closed gracefully');
+  });
 });
 
 /**

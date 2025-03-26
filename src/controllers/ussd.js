@@ -2,6 +2,7 @@ const sessionService = require('../services');
 const chatbotService = require('../services/chatbot');
 const logger = require('../utils/logger');
 const config = require('../utils/config');
+const ussdResponse = require('../utils/ussdResponse');
 
 // Maximum wait time in milliseconds
 const MAX_WAIT_TIME = parseInt(config.get('ussd.maxWaitTime')) || 3000;
@@ -43,22 +44,12 @@ async function handleStart(req, res) {
     
     if (response) {
       logger.info(`Responding to USSD start with chatbot response: ${sessionId}`);
-      return res.json({
-        shouldClose: false,
-        ussdMenu: response,
-        responseExitCode: 200,
-        responseMessage: ""
-      });
+      return res.json(ussdResponse.continueSession(response));
     }
     
     // If no response within timeout, send a waiting message
     logger.warn(`No chatbot response received in time for session: ${sessionId}`);
-    return res.json({
-      shouldClose: true,
-      ussdMenu: "We are experiencing technical issues. Please try again later.",
-      responseExitCode: 200,
-      responseMessage: ""
-    });
+    return res.json(ussdResponse.timeoutResponse());
   } catch (error) {
     logger.error(`Error in USSD start handler: ${error.message}`, {
       sessionId,
@@ -76,12 +67,11 @@ async function handleStart(req, res) {
       errorMessage = "Service is currently unavailable due to configuration issues. Please contact the service provider.";
     }
     
-    return res.status(500).json({
-      shouldClose: true,
-      ussdMenu: errorMessage,
-      responseExitCode: 500,
-      responseMessage: "Internal server error"
-    });
+    return res.status(500).json(ussdResponse.errorResponse(
+      errorMessage, 
+      500, 
+      error.message
+    ));
   }
 }
 
@@ -100,19 +90,13 @@ async function handleResponse(req, res) {
   });
   
   try {
-
     
     // Get session
     const session = await sessionService.getSession(sessionId);
     
     if (!session) {
       logger.warn(`Session not found for response: ${sessionId}`);
-      return res.status(404).json({
-        shouldClose: true,
-        ussdMenu: "Session expired. Please start again.",
-        responseExitCode: 404,
-        responseMessage: "Session not found"
-      });
+      return res.status(404).json(ussdResponse.notFoundResponse());
     }
     
     // Update session
@@ -138,22 +122,17 @@ async function handleResponse(req, res) {
       }
       
       logger.info(`Responding to USSD response with chatbot response: ${sessionId}, shouldClose: ${shouldClose}`);
-      return res.json({
-        shouldClose: shouldClose,
-        ussdMenu: cleanResponse,
-        responseExitCode: 200,
-        responseMessage: ""
-      });
+      
+      if (shouldClose) {
+        return res.json(ussdResponse.endSession(cleanResponse));
+      } else {
+        return res.json(ussdResponse.continueSession(cleanResponse));
+      }
     }
     
     // If no response within timeout, send an error message
     logger.warn(`No chatbot response received in time for session: ${sessionId}`);
-    return res.json({
-      shouldClose: true,
-      ussdMenu: "We are experiencing technical issues. Please try again later.",
-      responseExitCode: 200,
-      responseMessage: ""
-    });
+    return res.json(ussdResponse.timeoutResponse());
   } catch (error) {
     logger.error(`Error in USSD response handler: ${error.message}`, {
       sessionId,
@@ -171,15 +150,13 @@ async function handleResponse(req, res) {
       errorMessage = "Service is currently unavailable due to configuration issues. Please contact the service provider.";
     }
     
-    return res.status(500).json({
-      shouldClose: true,
-      ussdMenu: errorMessage,
-      responseExitCode: 500,
-      responseMessage: "Internal server error"
-    });
+    return res.status(500).json(ussdResponse.errorResponse(
+      errorMessage, 
+      500, 
+      error.message
+    ));
   }
 }
-
 
 /**
  * Handle the USSD end request
