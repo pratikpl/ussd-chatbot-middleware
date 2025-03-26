@@ -6,8 +6,8 @@ const logger = require('../utils/logger');
 
 // Create Redis client
 const redisConfig = {
-  host: config.get('redis.host'),
-  port: config.get('redis.port'),
+  host: config.get('redis.host') || 'localhost',
+  port: parseInt(config.get('redis.port')) || 6379,
   retry_strategy: (options) => {
     if (options.error && options.error.code === 'ECONNREFUSED') {
       logger.error('Redis connection refused');
@@ -18,11 +18,19 @@ const redisConfig = {
       return new Error('Retry time exhausted');
     }
     if (options.attempt > 10) {
-      logger.error('Redis max attempts reached');
+      logger.error('Redis max attempts reached, stopping retries');
       return undefined;
     }
-    return Math.min(options.attempt * 100, 3000);
-  }
+    
+    // Implement exponential backoff with jitter
+    const delay = Math.min(
+      Math.pow(2, options.attempt) * 100 + Math.floor(Math.random() * 100),
+      3000
+    );
+    logger.info(`Retrying Redis connection in ${delay}ms (attempt ${options.attempt})`);
+    return delay;
+  },
+  enable_offline_queue: true
 };
 
 // Add password only if it's provided and not null

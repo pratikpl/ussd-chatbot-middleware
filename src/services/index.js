@@ -1,27 +1,39 @@
 /**
- * Service selector - chooses between Redis and in-memory session services
- * based on environment configuration
+ * Session service that uses Redis for all session management
  */
-const config = require('../utils/config');
 const logger = require('../utils/logger');
 
 let sessionService;
 
 try {
-  // Check if we should use Redis
-  const useRedis = process.env.USE_REDIS === 'true' || process.env.NODE_ENV === 'production';
+  // Always use Redis for session management
+  logger.info('Using Redis for session management');
+  sessionService = require('./session');
   
-  if (useRedis) {
-    logger.info('Using Redis for session management');
-    sessionService = require('./session');
-  } else {
-    logger.info('Using in-memory storage for session management');
-    sessionService = require('./memory-session');
+  // Verify the session service has the required methods
+  const requiredMethods = [
+    'createSession', 
+    'getSession', 
+    'updateSession', 
+    'endSession', 
+    'storeChatbotResponse', 
+    'getChatbotResponse'
+  ];
+  
+  const missingMethods = requiredMethods.filter(method => 
+    typeof sessionService[method] !== 'function'
+  );
+  
+  if (missingMethods.length > 0) {
+    throw new Error(`Session service is missing required methods: ${missingMethods.join(', ')}`);
   }
+  
+  logger.info('Session service loaded successfully with all required methods');
 } catch (error) {
-  // Fall back to in-memory if Redis fails
-  logger.warn(`Error initializing Redis, falling back to in-memory storage: ${error.message}`);
-  sessionService = require('./memory-session');
+  logger.error(`Fatal error initializing Redis session service: ${error.message}`);
+  // Instead of falling back to in-memory, we'll throw an error
+  throw new Error(`Failed to initialize Redis session service: ${error.message}`);
 }
 
+// Export the session service directly
 module.exports = sessionService;

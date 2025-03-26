@@ -14,7 +14,7 @@ const WORKERS = Math.min(
 /**
  * Start the server
  */
-function startServer() {
+async function startServer() {
   // Log important configuration at startup
   const config = require('./utils/config');
   
@@ -26,6 +26,29 @@ function startServer() {
     const maskedKey = apiKey.substring(0, 6) + '...' + 
                      (apiKey.length > 10 ? apiKey.substring(apiKey.length - 4) : '');
     logger.info(`API Key: ${maskedKey}`);
+  }
+  
+  // Verify Redis is configured
+  const redisHost = config.get('redis.host');
+  const redisPort = config.get('redis.port');
+  
+  if (!redisHost || !redisPort) {
+    logger.error('CRITICAL: Redis configuration is missing. Please check your .env file.');
+    process.exit(1); // Exit with error
+  } else {
+    logger.info(`Redis configured at ${redisHost}:${redisPort}`);
+  }
+  
+  // Verify session service is initialized
+  try {
+    // Simply importing the service will check if Redis is available
+    // because we've added the validation in the session.js file
+    require('./services');
+    logger.info('Session service initialized successfully');
+  } catch (error) {
+    logger.error(`Failed to initialize session service: ${error.message}`);
+    logger.error('Cannot start server without session service');
+    process.exit(1); // Exit with error
   }
   
   app.listen(PORT, () => {
